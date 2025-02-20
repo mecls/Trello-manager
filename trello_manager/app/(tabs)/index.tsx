@@ -1,74 +1,170 @@
-import { Image, StyleSheet, Platform } from 'react-native';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { ThemedText } from "@/components/ThemedText";
+import React, { useState, useEffect } from "react";
+import { View, TextInput, Button, Text, ScrollView, StyleSheet } from "react-native";
 
-export default function HomeScreen() {
+const MainScreen = () => {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [boardResults, setBoardResults] = useState<any[]>([]);
+  const [isVisible, setIsVisible] = useState(false);
+  const [lists, setLists] = useState<any[]>([]);
+  const [cards, setCards] = useState<any[]>([]);
+  const [listCounts, setListCounts] = useState<{ [key: string]: number }>({});
+
+  // ✅ Fetch boards automatically when component mounts
+  useEffect(() => {
+    fetchBoards();
+  }, []); // ✅ Runs when boardResults changes
+
+  // ✅ Fetch AI answer
+  const askAI = async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/ask?question=${encodeURIComponent(question)}`);
+      const data = await response.json();
+      setAnswer(data.answer);
+      setIsVisible(true);
+      setQuestion("");
+    } catch (error) {
+      console.error("Error fetching AI response:", error);
+    }
+  };
+
+  const fetchBoards = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/getBoards");
+      const data = await response.json();
+
+      if (data.boards) {
+        setBoardResults(data.boards);
+
+        // ✅ Fetch lists for each board after boards load
+        data.boards.forEach((board: { id: any; }) => {
+          fetchListsForBoard(board.id);
+        });
+      } else {
+        setBoardResults([]);
+      }
+
+      console.log("Fetched Boards:", data.boards);
+    } catch (error) {
+      console.error("Error fetching Trello boards:", error);
+      setBoardResults([]);
+    }
+  };
+
+  // ✅ Fetch lists for a given board
+  const fetchListsForBoard = async (boardId: any) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/getLists?board_id=${boardId}`);
+      const data = await response.json();
+
+      if (data.lists) {
+        setListCounts((prev) => ({ ...prev, [boardId]: data.lists.length })); // ✅ Save count
+      } else {
+        setListCounts((prev) => ({ ...prev, [boardId]: 0 }));
+      }
+
+      console.log(`Fetched Lists for Board ${boardId}:`, data.lists);
+    } catch (error) {
+      console.error("Error fetching Trello lists:", error);
+      setListCounts((prev) => ({ ...prev, [boardId]: 0 }));
+    }
+  };
+
+  console.log("Lists:", lists);
+
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      {/* ✅ Display Boards */}
+      <ThemedText type="title" style={styles.centerText}>Your Boards</ThemedText>
+      <ScrollView
+        horizontal
+        contentContainerStyle={styles.scrollContainer}
+        style={{ width: '100%' }} // ✅ Ensure full width
+      >
+        {boardResults.map((board) => (
+          <View key={board.id} style={[styles.boardCard]}>
+            <ThemedText type="subtitle">{board.name}</ThemedText>
+            <ThemedText type="default" style={{ marginTop: 10 }}>
+              {listCounts[board.id] !== undefined ? `${listCounts[board.id]} Lists` : "Loading..."}
+            </ThemedText>
+          </View>
+        ))}
+
+      </ScrollView>
+
+      {/* ✅ Input Field & Button */}
+      <View style={styles.promptContainer}>
+        <ThemedText type="defaultSemiBold">Prompt an action:</ThemedText>
+        <TextInput
+          value={question}
+          onChangeText={setQuestion}
+          placeholder="Ask a question..."
+          style={styles.input}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <Button title="OK" onPress={askAI} />
+      </View>
+
+      {/* ✅ AI Answer & Clear Button */}
+      <ScrollView>
+        {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
+        {isVisible && (
+          <Button title="Clear" onPress={() => { setAnswer(""); setIsVisible(false); }} />
+        )}
+      </ScrollView>
+    </View>
   );
-}
+};
+
+export default MainScreen;
+
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    paddingTop: 90,
+    margin: 10,
+    alignContent: 'center',
+    backgroundColor: "#f9f9f9",
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  centerText: {
+    alignSelf: "center",
+    fontWeight: "bold",
+    marginBottom: 20,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  scrollContainer: {
+    flexGrow: 1,  // ✅ Allows content to stretch inside ScrollView
+    justifyContent: "flex-start",
+  },
+  boardCard: {
+    padding: 10,
+    marginTop: 10,
+    width: 250, // ✅ Keep a consistent width
+    backgroundColor: "#fff",
+    marginHorizontal: 10, // ✅ Ensure spacing between items
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  promptContainer: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    padding: 10,
+    width: 250,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  answerText: {
+    marginTop: 20,
+    fontWeight: "bold",
   },
 });
