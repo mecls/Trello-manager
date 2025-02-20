@@ -73,9 +73,6 @@ const MainScreen = () => {
     }
   };
 
-  console.log("Lists:", lists);
-
-
   return (
     <View style={styles.container}>
       {/* ✅ Display Boards */}
