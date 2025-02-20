@@ -66,13 +66,13 @@ def ask(question: str):
 
     return {"answer": answer}
 
+
 @app.get("/getBoards")
 def get_boards():
     """Fetch all boards associated with the authenticated Trello user."""
 
     url = f"https://api.trello.com/1/members/me/boards"
     params = {
-        "lists": "all",
         "key": TRELLO_API_KEY,
         "token": TRELLO_TOKEN
     }
@@ -83,6 +83,7 @@ def get_boards():
         return {"boards": response.json()}
     else:
         return {"error": "Failed to fetch Trello boards", "status_code": response.status_code}
+    
 
 @app.get("/getLists")
 def get_lists(board_id: str):

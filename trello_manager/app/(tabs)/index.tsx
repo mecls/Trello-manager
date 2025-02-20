@@ -39,7 +39,7 @@ const MainScreen = () => {
         setBoardResults(data.boards);
 
         // ✅ Fetch lists for each board after boards load
-        data.boards.forEach((board: { id: any; }) => {
+        data.boards.forEach((board: {id:any}) => {
           fetchListsForBoard(board.id);
         });
       } else {
@@ -52,6 +52,7 @@ const MainScreen = () => {
       setBoardResults([]);
     }
   };
+
 
   // ✅ Fetch lists for a given board
   const fetchListsForBoard = async (boardId: any) => {
@@ -88,11 +89,10 @@ const MainScreen = () => {
           <View key={board.id} style={[styles.boardCard]}>
             <ThemedText type="subtitle">{board.name}</ThemedText>
             <ThemedText type="default" style={{ marginTop: 10 }}>
-              {listCounts[board.id] !== undefined ? `${listCounts[board.id]} Lists` : "Loading..."}
+              {listCounts[String(board.id)] !== undefined ? `${listCounts[String(board.id)]} Lists` : "Loading..."}
             </ThemedText>
           </View>
         ))}
-
       </ScrollView>
 
       {/* ✅ Input Field & Button */}
