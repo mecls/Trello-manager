@@ -8,21 +8,17 @@ const MainScreen = () => {
   const [answer, setAnswer] = useState("");
   const [boardResults, setBoardResults] = useState<any[]>([]);
   const [isVisible, setIsVisible] = useState(false);
-  const [lists, setLists] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
   const [listByBoard, setListByBoard] = useState<{ [key: string]: any[] }>({});
+  const [cardByList, setCardsByList] = useState<{ [key: string]: any[] }>({});
 
-  // ✅ Fetch boards automatically when component mounts
+  // Fetch boards automatically when component mounts
   useEffect(() => {
     fetchBoards();
-    fetchLists();
-  }, []); // ✅ Runs when boardResults changes
-  const fetchLists = async () => {
-    const response = await fetch('your-api-url'); // Replace with actual API call
-    const data = await response.json();
-    setLists(data);
-  };
-  // ✅ Fetch AI answer
+  }, []); // Runs when boardResults changes
+
+
+  // Fetch AI answer
   const askAI = async () => {
     try {
       const response = await fetch(`http://127.0.0.1:8000/ask?question=${encodeURIComponent(question)}`);
@@ -43,7 +39,7 @@ const MainScreen = () => {
       if (data.boards) {
         setBoardResults(data.boards);
 
-        // ✅ Fetch lists for each board after boards load
+        // Fetch lists for each board after boards load
         data.boards.forEach((board: { id: any }) => {
           fetchListsForBoard(board.id);
         });
@@ -58,8 +54,6 @@ const MainScreen = () => {
     }
   };
 
-
-
   const fetchListsForBoard = async (boardId: any) => {
     try {
       const response = await fetch(`http://127.0.0.1:8000/getLists?board_id=${boardId}`);
@@ -68,8 +62,12 @@ const MainScreen = () => {
       if (data.lists) {
         setListByBoard((prev) => ({
           ...prev,
-          [boardId]: data.lists, // ✅ Ensure lists are properly categorized under each board
+          [boardId]: data.lists, // Ensure lists are properly categorized under each board
         }));
+        // Fetch lists for each board after boards load
+        data.lists.forEach((list: { id: any }) => {
+          fetchCardbyList(list.id);
+        });
       } else {
         setListByBoard((prev) => ({
           ...prev,
@@ -87,20 +85,57 @@ const MainScreen = () => {
     }
   };
 
+  const fetchCardbyList = async (listId: any) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/getCards?list_id=${listId}`);
+      const data = await response.json();
+
+      if (data.cards) {
+        setCardsByList((prev) => ({
+          ...prev,
+          [listId]: data.cards, // Ensure cards are properly categorized under each list
+        }));
+
+      } else {
+        setCardsByList((prev) => ({
+          ...prev,
+          [listId]: [],
+        }));
+      }
+
+    } catch (error) {
+      console.error("Error fetching Trello cards:", error);
+    }
+  }
 
   return (
     <View style={styles.container}>
-      {/* ✅ Display Boards */}
+      {/* Display Boards */}
       <ThemedText type="title" style={styles.centerText}>Your Boards</ThemedText>
       <ScrollView horizontal contentContainerStyle={styles.scrollContainer} style={{ width: '100%' }}>
         {boardResults.map((board) => (
           <View key={board.id} style={[styles.boardCard]}>
             <ThemedText type="subtitle">{board.name}</ThemedText>
+
+            {/* Display Lists */}
             <ScrollView horizontal style={{ maxHeight: 200, marginTop: 10 }}>
               {listByBoard[board.id]?.length > 0 ? (
                 listByBoard[board.id].map((list) => (
-                  <View key={list.id} style={{ padding: 5, margin: 5, backgroundColor: "#f0f0f0", borderRadius: 10, width:200 }}>
+                  <View key={list.id} style={{ padding: 5, margin: 5, backgroundColor: "#F4F4F4", borderRadius: 10, width: 200 }}>
                     <ThemedText type="defaultSemiBold">{list.name}</ThemedText>
+                    {/* Display Cards for This List */}
+                    <ScrollView>
+                      {cardByList[list.id]?.length > 0 ? (
+                        cardByList[list.id].map((card) => (
+                          <View key={card.id} style={{ padding: 5, marginTop: 15, borderRadius: 10, width: 180, borderColor: "blue", borderWidth:1  }}>
+                            <ThemedText type="default">{card.name}</ThemedText>
+                          </View>
+                        ))
+                      ) : (
+                        <ThemedText type="default">No cards</ThemedText>
+                      )}
+                    </ScrollView>
+
                   </View>
                 ))
               ) : (
@@ -111,8 +146,7 @@ const MainScreen = () => {
         ))}
       </ScrollView>
 
-
-      {/* ✅ Input Field & Button */}
+      {/* Input Field & Button */}
       <View style={styles.promptContainer}>
         <ThemedText type="defaultSemiBold">Prompt an action:</ThemedText>
         <TextInput
@@ -124,7 +158,7 @@ const MainScreen = () => {
         <Button title="OK" onPress={askAI} />
       </View>
 
-      {/* ✅ AI Answer & Clear Button */}
+      {/* AI Answer & Clear Button */}
       <ScrollView>
         {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
         {isVisible && (
@@ -152,15 +186,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   scrollContainer: {
-    flexGrow: 1,  // ✅ Allows content to stretch inside ScrollView
+    flexGrow: 1,
     justifyContent: "flex-start",
   },
   boardCard: {
     padding: 10,
     marginTop: 10,
-    width: 250, // ✅ Keep a consistent width
+    width: 250,
     backgroundColor: "#fff",
-    marginHorizontal: 10, // ✅ Ensure spacing between items
+    marginHorizontal: 10,
     borderRadius: 10,
     shadowColor: "#000",
     shadowOpacity: 0.1,
