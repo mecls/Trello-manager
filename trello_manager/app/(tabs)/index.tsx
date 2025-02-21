@@ -10,13 +10,18 @@ const MainScreen = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [lists, setLists] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
-  const [listCounts, setListCounts] = useState<{ [key: string]: number }>({});
+  const [listByBoard, setListByBoard] = useState<{ [key: string]: any[] }>({});
 
   // ✅ Fetch boards automatically when component mounts
   useEffect(() => {
     fetchBoards();
+    fetchLists();
   }, []); // ✅ Runs when boardResults changes
-
+  const fetchLists = async () => {
+    const response = await fetch('your-api-url'); // Replace with actual API call
+    const data = await response.json();
+    setLists(data);
+  };
   // ✅ Fetch AI answer
   const askAI = async () => {
     try {
@@ -39,7 +44,7 @@ const MainScreen = () => {
         setBoardResults(data.boards);
 
         // ✅ Fetch lists for each board after boards load
-        data.boards.forEach((board: {id:any}) => {
+        data.boards.forEach((board: { id: any }) => {
           fetchListsForBoard(board.id);
         });
       } else {
@@ -54,43 +59,58 @@ const MainScreen = () => {
   };
 
 
-  // ✅ Fetch lists for a given board
+
   const fetchListsForBoard = async (boardId: any) => {
     try {
       const response = await fetch(`http://127.0.0.1:8000/getLists?board_id=${boardId}`);
       const data = await response.json();
 
       if (data.lists) {
-        setListCounts((prev) => ({ ...prev, [boardId]: data.lists.length })); // ✅ Save count
+        setListByBoard((prev) => ({
+          ...prev,
+          [boardId]: data.lists, // ✅ Ensure lists are properly categorized under each board
+        }));
       } else {
-        setListCounts((prev) => ({ ...prev, [boardId]: 0 }));
+        setListByBoard((prev) => ({
+          ...prev,
+          [boardId]: [],
+        }));
       }
 
       console.log(`Fetched Lists for Board ${boardId}:`, data.lists);
     } catch (error) {
       console.error("Error fetching Trello lists:", error);
-      setListCounts((prev) => ({ ...prev, [boardId]: 0 }));
+      setListByBoard((prev) => ({
+        ...prev,
+        [boardId]: [],
+      }));
     }
   };
+
 
   return (
     <View style={styles.container}>
       {/* ✅ Display Boards */}
       <ThemedText type="title" style={styles.centerText}>Your Boards</ThemedText>
-      <ScrollView
-        horizontal
-        contentContainerStyle={styles.scrollContainer}
-        style={{ width: '100%' }} // ✅ Ensure full width
-      >
+      <ScrollView horizontal contentContainerStyle={styles.scrollContainer} style={{ width: '100%' }}>
         {boardResults.map((board) => (
           <View key={board.id} style={[styles.boardCard]}>
             <ThemedText type="subtitle">{board.name}</ThemedText>
-            <ThemedText type="default" style={{ marginTop: 10 }}>
-              {listCounts[String(board.id)] !== undefined ? `${listCounts[String(board.id)]} Lists` : "Loading..."}
-            </ThemedText>
+            <ScrollView horizontal style={{ maxHeight: 200, marginTop: 10 }}>
+              {listByBoard[board.id]?.length > 0 ? (
+                listByBoard[board.id].map((list) => (
+                  <View key={list.id} style={{ padding: 5, margin: 5, backgroundColor: "#f0f0f0", borderRadius: 10, width:200 }}>
+                    <ThemedText type="defaultSemiBold">{list.name}</ThemedText>
+                  </View>
+                ))
+              ) : (
+                <ThemedText type="default">No Lists</ThemedText>
+              )}
+            </ScrollView>
           </View>
         ))}
       </ScrollView>
+
 
       {/* ✅ Input Field & Button */}
       <View style={styles.promptContainer}>
