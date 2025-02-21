@@ -2,13 +2,14 @@
 import { ThemedText } from "@/components/ThemedText";
 import React, { useState, useEffect } from "react";
 import { View, TextInput, Button, Text, ScrollView, StyleSheet } from "react-native";
+import { format } from "date-fns";
 
 const MainScreen = () => {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [boardResults, setBoardResults] = useState<any[]>([]);
   const [isVisible, setIsVisible] = useState(false);
-  const [cards, setCards] = useState<any[]>([]);
+  const [fieldsByCard, setfieldsByCard] = useState<any[]>([]);
   const [listByBoard, setListByBoard] = useState<{ [key: string]: any[] }>({});
   const [cardByList, setCardsByList] = useState<{ [key: string]: any[] }>({});
 
@@ -96,6 +97,7 @@ const MainScreen = () => {
           [listId]: data.cards, // Ensure cards are properly categorized under each list
         }));
 
+
       } else {
         setCardsByList((prev) => ({
           ...prev,
@@ -114,21 +116,30 @@ const MainScreen = () => {
       <ThemedText type="title" style={styles.centerText}>Your Boards</ThemedText>
       <ScrollView horizontal contentContainerStyle={styles.scrollContainer} style={{ width: '100%' }}>
         {boardResults.map((board) => (
-          <View key={board.id} style={[styles.boardCard]}>
+          <View key={board.id} style={styles.boardCard}>
             <ThemedText type="subtitle">{board.name}</ThemedText>
 
             {/* Display Lists */}
             <ScrollView horizontal style={{ maxHeight: 200, marginTop: 10 }}>
               {listByBoard[board.id]?.length > 0 ? (
                 listByBoard[board.id].map((list) => (
-                  <View key={list.id} style={{ padding: 5, margin: 5, backgroundColor: "#F4F4F4", borderRadius: 10, width: 200 }}>
+                  <View key={list.id} style={styles.listCard}>
                     <ThemedText type="defaultSemiBold">{list.name}</ThemedText>
                     {/* Display Cards for This List */}
                     <ScrollView>
                       {cardByList[list.id]?.length > 0 ? (
                         cardByList[list.id].map((card) => (
-                          <View key={card.id} style={{ padding: 5, marginTop: 15, borderRadius: 10, width: 180, borderColor: "blue", borderWidth:1  }}>
-                            <ThemedText type="default">{card.name}</ThemedText>
+                          <View key={card.id} style={ styles.cardBoard}>
+                            <ThemedText type="default" style={{ fontWeight: '500' }}>{card.name}</ThemedText>
+                            {card.desc && (
+                              <ThemedText style={{ fontSize: 12 }}><ThemedText style={{ fontWeight: 'bold', fontSize: 12 }}>Desc: </ThemedText>{card.desc}</ThemedText>
+                            )}
+                            {card.due && (
+                              <ThemedText style={{ fontSize: 12 }}>
+                                <ThemedText style={{ fontWeight: 'bold', fontSize: 12 }}>Due: </ThemedText>
+                                {format(new Date(card.due), "dd/MM/yyyy")}
+                              </ThemedText>
+                            )}
                           </View>
                         ))
                       ) : (
@@ -155,7 +166,7 @@ const MainScreen = () => {
           placeholder="Ask a question..."
           style={styles.input}
         />
-        <Button title="OK" onPress={askAI} />
+        <Button title="GO" onPress={askAI} />
       </View>
 
       {/* AI Answer & Clear Button */}
@@ -171,51 +182,87 @@ const MainScreen = () => {
 
 export default MainScreen;
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 90,
-    margin: 10,
-    alignContent: 'center',
-    backgroundColor: "#f9f9f9",
+    paddingTop: 80,
+    paddingHorizontal: 15,
+    // backgroundColor: "#f4f9fc", 
+    //backgroundColor: "#faf0e6", 
+    backgroundColor: "#fbf7f5", 
   },
   centerText: {
     alignSelf: "center",
     fontWeight: "bold",
     marginBottom: 20,
+    color: "#333", // Darker text for contrast
   },
   scrollContainer: {
-    flexGrow: 1,
-    justifyContent: "flex-start",
+    flexGrow: 2,
+    paddingVertical: 10, // Adds spacing inside scroll
+    gap: 15, // Ensures spacing between boards
   },
   boardCard: {
-    padding: 10,
+    padding: 15,
     marginTop: 10,
-    width: 250,
+    width: 260,
+    height:300,
     backgroundColor: "#fff",
-    marginHorizontal: 10,
-    borderRadius: 10,
+    marginHorizontal: 12,
+    borderRadius: 15, // More rounded edges
+    shadowColor: "#000",
+    shadowOpacity: 0.08, // Softer shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  listCard: {
+    padding: 10,
+    margin: 7,
+    backgroundColor: "#dcf3ff", // Subtle blue background
+    borderRadius: 12,
+    width: 210,
     shadowColor: "#000",
     shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  cardBoard: {
+    padding: 8,
+    marginTop: 12,
+    borderRadius: 12,
+    width: 190,
+    borderColor: "#ff9a00",
+    borderWidth: 1.5,
+    backgroundColor: "#fff", // Ensure white background
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
     shadowRadius: 5,
     elevation: 3,
   },
   promptContainer: {
-    marginTop: 20,
+    flex:8,
+    marginTop: 10,
     alignItems: "center",
+    paddingHorizontal: 20,
   },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
-    padding: 10,
-    width: 250,
-    borderRadius: 8,
+    padding: 12,
+    width: "90%",
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    fontSize: 16,
     marginBottom: 10,
   },
   answerText: {
     marginTop: 20,
     fontWeight: "bold",
+    fontSize: 16,
+    color: "#333",
+    textAlign: "center",
   },
 });

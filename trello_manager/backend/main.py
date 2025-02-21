@@ -117,3 +117,20 @@ def get_cards(list_id: str):
         return {"cards": response.json()}
     else:   
         return {"error": "Failed to fetch Trello cards", "status_code": response.status_code}
+    
+@app.get("/getFields")
+def get_fields(id: str, field:str):
+    """Fetch all fields for a given Trello list."""
+
+    url = f"https://api.trello.com/1/cards/{id}/{field}"
+
+    params = {
+        "key": TRELLO_API_KEY,
+        "token": TRELLO_TOKEN
+    }
+    
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        return {"fields": response.json()}
+    else:   
+        return {"error": "Failed to fetch Trello fields", "status_code": response.status_code}
