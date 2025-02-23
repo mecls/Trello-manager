@@ -22,7 +22,7 @@ const MainScreen = () => {
   // Fetch AI answer
   const askAI = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/ask?question=${encodeURIComponent(question)}`);
+      const response = await fetch(`http://127.0.0.1:8000/prompt?action=${encodeURIComponent(question)}`);
       const data = await response.json();
       setAnswer(data.answer);
       setIsVisible(true);
