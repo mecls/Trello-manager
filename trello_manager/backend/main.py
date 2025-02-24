@@ -1,5 +1,5 @@
 import datetime
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Request
 import ollama
 import chromadb
 import uuid
@@ -7,8 +7,12 @@ import requests
 import os
 from dotenv import load_dotenv
 from langsmith import Client
-from langchain_core.prompts import ChatPromptTemplate
 
+from langchain_core.prompts import ChatPromptTemplate
+  # Parse the JSON response
+import json
+import re
+        
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -37,66 +41,244 @@ def convert_messages_to_ollama(messages):
             })
     return converted_messages
 
-@app.get("/prompt")
-async def ask(action: str = Query(..., title="User Question", description="Enter a question for the chatbot")):
-    """Process a user question and provide an AI-generated response."""
+@app.post("/prompt")
+async def ask(request: Request):
+    """Process a user request and generates the proper action using LLM for information extraction"""
     
-    # Define the prompt template
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful chatbot specialized in task management and organization."),
-        ("user", "{question}")
-    ])
+    body = await request.json()  # Get full JSON body
+    action = body.get("action", "").strip()  # Extract action
 
-    # Get past conversations
+    if not action:
+        return {"error": "No action provided in the request."}
+
+    # First, use the LLM to analyze the request and extract structured information
+    extraction_prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are an AI assistant specialized in extracting structured information from user requests related to Trello.
+            
+    For each request, extract the following details if present:
+    - Action type: create, list, update, delete, etc.
+    - Object type: board, list, card, etc.
+    - Name: The name provided for the object
+    - Description: Any description provided
+    - Other parameters: Due dates, labels, members, etc.
+
+    Respond ONLY with a JSON object containing these fields. If a field is not present in the request, set its value to null."""),
+    ("user", "{request}")
+    ])
+    
+    # Format the extraction prompt
+    extraction_messages = extraction_prompt.format_messages(request=action)
+    ollama_extraction_messages = convert_messages_to_ollama(extraction_messages)
+    
+    # Get structured information from the LLM
+    try:
+        extraction_response = ollama.chat(
+            model="llama3.2",
+            messages=ollama_extraction_messages
+        )
+        
+        extracted_info_text = extraction_response["message"]["content"]
+        
+      
+        # # Find JSON content in the response (it might be surrounded by markdown code blocks)
+        # json_match = re.search(r'```json\s*(.*?)\s*```', extracted_info_text, re.DOTALL)
+        # if json_match:
+        #     extracted_info_text = json_match.group(1)
+        # else:
+        #     # Try to find any JSON-like structure
+        #     json_match = re.search(r'(\{.*\})', extracted_info_text, re.DOTALL)
+        #     if json_match:
+        #         extracted_info_text = json_match.group(1)
+                
+        try:
+            extracted_info = json.loads(extracted_info_text)
+        except json.JSONDecodeError:
+            # Fallback to a simple structure if JSON parsing fails
+            extracted_info = {
+                "action_type": "create" if "create" in action.lower() else ("delete" if "delete" in action.lower() else "other"),
+                "object_type": "board" if "board" in action.lower() else "unknown",
+                "name": None,
+                "description": None,
+                "other_parameters": {}
+            }
+                
+        # Regex patterns to match different ways of specifying a name
+        name_patterns = [
+            r"name\s*[:=]?\s*(\w[\w\s]*)",         # Matches "name: XYZ" or "name = XYZ"
+            r"called\s+([\w\s]+)",                 # Matches "called XYZ"
+            r"named\s+([\w\s]+)",                  # Matches "named XYZ"
+            r"create\s+(?:a\s+new\s+)?board\s+(?:called|named)\s+([\w\s]+)"  # Matches "create a new board called XYZ"
+        ]
+
+        for pattern in name_patterns:
+            match = re.search(pattern, action, re.IGNORECASE)
+            if match:
+                extracted_info["name"] = match.group(1).strip()
+                break  # Stop at the first valid match
+
+                
+    except Exception as e:
+        return {"error": f"Error extracting information from request: {str(e)}"}
+    
+    # Get past conversations for context
     try:
         results = collection.query(
             query_texts=[action],
-            n_results=50
+            n_results=5
         )
         past_conversations = results["documents"][0] if results["documents"] else ["No relevant past conversations found."]
     except Exception as e:
         past_conversations = [f"Error retrieving past conversations: {str(e)}"]
-
-    # Process the question with context
-    processed_question = f"""
-    Past conversations for context: {past_conversations}
-
-    Current question: {action}
-
-    Please provide a direct and relevant response based on both the current question and any applicable past context.
-    """
-
-    # Format the prompt
-    formatted_messages = prompt.format_messages(question=processed_question)
     
-    # Convert messages to Ollama format
-    ollama_messages = convert_messages_to_ollama(formatted_messages)
+    # Execute Trello actions based on extracted information
+    action_type = extracted_info.get("action_type")
+    object_type = extracted_info.get("object_type")
+    
+    # Create a board
+    if action_type == "create" and object_type == "board":
+        # Use the extracted name or a default
+        board_name = extracted_info.get("name") or "New Trello Board by Jorge"
+        
+        # Check for description and other parameters
+        description = extracted_info.get("description")
+        other_params = extracted_info.get("other_parameters", {})
+        
+        # Prepare Trello API call parameters
+        url = "https://api.trello.com/1/boards/"
+        params = {
+            "name": {board_name},
+            "defaultLists": None,
+            "defaultLists": None,
+            "key": TRELLO_API_KEY,
+            "token": TRELLO_TOKEN,
+        }
+        
+        # Add description if present
+        if description:
+            params["desc"] = description
+        
+        # Add any other supported parameters
+        if "background_color" in other_params:
+            params["prefs_background"] = other_params["background_color"]
+        
+        if "visibility" in other_params:
+            params["prefs_permissionLevel"] = other_params["visibility"]
+        
+        try:
+            reply = requests.post(url, params=params)
+            
+            if reply.status_code == 200:
+                board_data = reply.json()
+                answer = f"I've created a new Trello board called '{board_name}'"
+                if description:
+                    answer += f" with description: '{description}'"
+                answer += f". You can access it at {board_data.get('url', 'your Trello account')}."
+                
+                # Store conversation in ChromaDB
+                store_conversation(action, answer)
+                
+                return {
+                    "answer": answer, 
+                    "board": board_data,
+                    "extracted_info": extracted_info
+                }
+            else:
+                answer = f"Failed to create Trello board. Status code: {reply.status_code}. Message: {reply.text}"
+                return {"error": answer, "extracted_info": extracted_info}
+                
+        except Exception as e:
+            answer = f"Error creating Trello board: {str(e)}"
+            return {"error": answer, "extracted_info": extracted_info}
+        
+     # Delete a board
+    elif action_type == "delete" and object_type == "board":
+        board_name = extracted_info.get("name") or "New Trello Board by Jorge"
 
-    # Generate response using Ollama
-    try:
-        response = ollama.chat(
-            model="llama3.2",
-            messages=ollama_messages
+        # Prepare Trello API call parameters
+        url = "https://api.trello.com/1/boards/{id}"
+
+        params = {
+            "name": {board_name},
+            "key": TRELLO_API_KEY,
+            "token": TRELLO_TOKEN,
+        }
+     
+        try:
+            reply = requests.delete(url, params=params)
+            
+            if reply.status_code == 200:
+                board_data = reply.json()
+                answer = f"I've deleted the board called '{board_name}' from your account"
+                                
+                # Store conversation in ChromaDB
+                store_conversation(action, answer)
+                
+                return {
+                    "answer": answer, 
+                    "board": board_data,
+                    "extracted_info": extracted_info
+                }
+            else:
+                answer = f"Failed to delete Trello board. Status code: {reply.status_code}. Message: {reply.text}"
+                return {"error": answer, "extracted_info": extracted_info}
+                
+        except Exception as e:
+            answer = f"Error deleting Trello board: {str(e)}"
+            return {"error": answer, "extracted_info": extracted_info}
+    
+    # For other types of requests or unsupported actions
+    else:
+        response_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful assistant specialized in Trello task management."),
+            ("user", f"""
+            Request: {action}
+
+            Past conversations for context: {past_conversations}
+
+            Based on this request related to Trello, provide a helpful response.
+            If the request appears to be asking for an action that's not implemented yet, 
+            politely explain what capabilities are currently available.
+            """)
+                    ])
+        
+        # response_messages = response_prompt.format_messages()
+        # The fix: Pass the required variables to format_messages()
+        response_messages = response_prompt.format_messages(
+            request=action,
+            past_conversations=past_conversations
         )
-        answer = response["message"]["content"]
-    except Exception as e:
-        return {"error": f"Error generating response: {str(e)}"}
+        ollama_response_messages = convert_messages_to_ollama(response_messages)
+        
+        try:
+            response = ollama.chat(
+                model="llama3.2",
+                messages=ollama_response_messages
+            )
+            answer = response["message"]["content"]
+            
+            # Store conversation in ChromaDB
+            store_conversation(action, answer)
+            
+            return {"answer": answer, "extracted_info": extracted_info}
+        except Exception as e:
+            answer = f"Error generating response: {str(e)}"
+            return {"error": answer, "extracted_info": extracted_info}
 
-    # Store conversation in ChromaDB
+# Helper function to store conversations in ChromaDB
+def store_conversation(request, answer):
     try:
         collection.add(
             ids=[str(uuid.uuid4())],
-            documents=[f"Q: {action}\nA: {answer}"],
+            documents=[f"Q: {request}\nA: {answer}"],
             metadatas=[{
-                "question": action,
+                "request": request,
                 "answer": answer,
                 "timestamp": datetime.datetime.now().isoformat()
             }]
         )
     except Exception as e:
-        return {"error": f"Failed to store conversation: {str(e)}", "answer": answer}
+        print(f"Failed to store conversation: {str(e)}")
 
-    return {"answer": answer}
 
 @app.get("/getBoards")
 def get_boards():

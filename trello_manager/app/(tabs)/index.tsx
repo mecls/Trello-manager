@@ -2,10 +2,10 @@
 import { ThemedText } from "@/components/ThemedText";
 import React, { useState, useEffect } from "react";
 import { View, TextInput, Button, Text, ScrollView, StyleSheet } from "react-native";
-import { format } from "date-fns";
+import { format, set } from "date-fns";
 
 const MainScreen = () => {
-  const [question, setQuestion] = useState("");
+  const [action, setAction] = useState("");
   const [answer, setAnswer] = useState("");
   const [boardResults, setBoardResults] = useState<any[]>([]);
   const [isVisible, setIsVisible] = useState(false);
@@ -18,17 +18,23 @@ const MainScreen = () => {
     fetchBoards();
   }, []); // Runs when boardResults changes
 
-
-  // Fetch AI answer
-  const askAI = async () => {
+  const act = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/prompt?action=${encodeURIComponent(question)}`);
+      const response = await fetch("http://127.0.0.1:8000/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+  
       const data = await response.json();
-      setAnswer(data.answer);
+      console.log("Response data:", data);  // Debugging
+  
+      setAnswer(data.answer || "No response from server.");
       setIsVisible(true);
-      setQuestion("");
+      setAction("");
     } catch (error) {
       console.error("Error fetching AI response:", error);
+      setAnswer("Error communicating with the server.");
     }
   };
 
@@ -129,7 +135,7 @@ const MainScreen = () => {
                     <ScrollView>
                       {cardByList[list.id]?.length > 0 ? (
                         cardByList[list.id].map((card) => (
-                          <View key={card.id} style={ styles.cardBoard}>
+                          <View key={card.id} style={styles.cardBoard}>
                             <ThemedText type="default" style={{ fontWeight: '500' }}>{card.name}</ThemedText>
                             {card.desc && (
                               <ThemedText style={{ fontSize: 12 }}><ThemedText style={{ fontWeight: 'bold', fontSize: 12 }}>Desc: </ThemedText>{card.desc}</ThemedText>
@@ -161,16 +167,16 @@ const MainScreen = () => {
       <View style={styles.promptContainer}>
         <ThemedText type="defaultSemiBold">Prompt an action:</ThemedText>
         <TextInput
-          value={question}
-          onChangeText={setQuestion}
+          value={action}
+          onChangeText={setAction}
           placeholder="Ask a question..."
           style={styles.input}
         />
-        <Button title="GO" onPress={askAI} />
+        <Button title="GO" onPress={act} />
       </View>
 
       {/* AI Answer & Clear Button */}
-      <ScrollView>
+      <ScrollView style={{marginBottom:150}}>
         {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
         {isVisible && (
           <Button title="Clear" onPress={() => { setAnswer(""); setIsVisible(false); }} />
@@ -189,7 +195,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     // backgroundColor: "#f4f9fc", 
     //backgroundColor: "#faf0e6", 
-    backgroundColor: "#fbf7f5", 
+    backgroundColor: "#fbf7f5",
   },
   centerText: {
     alignSelf: "center",
@@ -206,7 +212,7 @@ const styles = StyleSheet.create({
     padding: 15,
     marginTop: 10,
     width: 260,
-    height:300,
+    height: 300,
     backgroundColor: "#fff",
     marginHorizontal: 12,
     borderRadius: 15, // More rounded edges
@@ -243,7 +249,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   promptContainer: {
-    flex:8,
+    flex: 8,
     marginTop: 10,
     alignItems: "center",
     paddingHorizontal: 20,
@@ -259,7 +265,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   answerText: {
-    marginTop: 20,
+    marginTop: 0,
     fontWeight: "bold",
     fontSize: 16,
     color: "#333",
