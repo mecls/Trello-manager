@@ -191,40 +191,55 @@ async def ask(request: Request):
             return {"error": answer, "extracted_info": extracted_info}
         
      # Delete a board
+   # Delete a board
+# Delete a board
     elif action_type == "delete" and object_type == "board":
-        board_name = extracted_info.get("name") or "New Trello Board by Jorge"
+        board_name = extracted_info.get("name")
 
-        # Prepare Trello API call parameters
-        url = "https://api.trello.com/1/boards/{id}"
+    if not board_name:
+        return {"error": "No board name provided. Please specify the board you want to delete."}
 
-        params = {
-            "name": {board_name},
-            "key": TRELLO_API_KEY,
-            "token": TRELLO_TOKEN,
-        }
-     
-        try:
-            reply = requests.delete(url, params=params)
-            
-            if reply.status_code == 200:
-                board_data = reply.json()
-                answer = f"I've deleted the board called '{board_name}' from your account"
-                                
-                # Store conversation in ChromaDB
-                store_conversation(action, answer)
-                
-                return {
-                    "answer": answer, 
-                    "board": board_data,
-                    "extracted_info": extracted_info
-                }
-            else:
-                answer = f"Failed to delete Trello board. Status code: {reply.status_code}. Message: {reply.text}"
-                return {"error": answer, "extracted_info": extracted_info}
-                
-        except Exception as e:
-            answer = f"Error deleting Trello board: {str(e)}"
-            return {"error": answer, "extracted_info": extracted_info}
+    # 1. Get the list of boards to find the board ID
+    url_get_boards = f"https://api.trello.com/1/members/me/boards"
+    params = {
+        "name": {board_name},
+        "key": TRELLO_API_KEY,
+        "token": TRELLO_TOKEN
+    }
+
+    try:
+        boards_response = requests.get(url_get_boards, params=params)
+
+        if boards_response.status_code != 200:
+            return {"error": f"Failed to retrieve Trello boards. {boards_response.text}"}
+
+        boards = boards_response.json()
+        board_id = next((board["id"] for board in boards if board["name"].lower() == board_name.lower()), None)
+
+        if not board_id:
+            return {"error": f"Board '{board_name}' not found in your Trello account."}
+
+        # 2. Delete the board using the found ID
+        url_delete = f"https://api.trello.com/1/boards/{board_id}"
+
+        delete_response = requests.delete(url_delete, params=params)
+
+        if delete_response.status_code == 200:
+            answer = f"I've deleted the board called '{board_name}' from your account."
+
+            # Store conversation in ChromaDB
+            store_conversation(action, answer)
+
+            return {
+                "answer": answer,
+                "deleted_board_name": board_name,
+                "extracted_info": extracted_info
+            }
+        else:
+            return {"error": f"Failed to delete Trello board. Status code: {delete_response.status_code}. Message: {delete_response.text}"}
+
+    except Exception as e:
+        return {"error": f"Error deleting Trello board: {str(e)}"}
     
     # For other types of requests or unsupported actions
     else:
