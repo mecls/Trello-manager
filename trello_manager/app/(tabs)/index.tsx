@@ -176,7 +176,7 @@ const MainScreen = () => {
       </View>
 
       {/* AI Answer & Clear Button */}
-      <ScrollView style={{marginBottom:150}}>
+      <ScrollView>
         {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
         {isVisible && (
           <Button title="Clear" onPress={() => { setAnswer(""); setIsVisible(false); }} />
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   answerText: {
-    marginTop: 0,
+    marginTop: 50,
     fontWeight: "bold",
     fontSize: 16,
     color: "#333",

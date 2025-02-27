@@ -79,17 +79,6 @@ async def ask(request: Request):
         
         extracted_info_text = extraction_response["message"]["content"]
         
-      
-        # # Find JSON content in the response (it might be surrounded by markdown code blocks)
-        # json_match = re.search(r'```json\s*(.*?)\s*```', extracted_info_text, re.DOTALL)
-        # if json_match:
-        #     extracted_info_text = json_match.group(1)
-        # else:
-        #     # Try to find any JSON-like structure
-        #     json_match = re.search(r'(\{.*\})', extracted_info_text, re.DOTALL)
-        #     if json_match:
-        #         extracted_info_text = json_match.group(1)
-                
         try:
             extracted_info = json.loads(extracted_info_text)
         except json.JSONDecodeError:
