@@ -25,10 +25,10 @@ const MainScreen = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-  
+
       const data = await response.json();
       console.log("Response data:", data);  // Debugging
-  
+
       setAnswer(data.answer || "No response from server.");
       setIsVisible(true);
       setAction("");
@@ -176,8 +176,11 @@ const MainScreen = () => {
       </View>
 
       {/* AI Answer & Clear Button */}
-      <ScrollView>
-        {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
+      <ScrollView style={{ marginBottom: 100 }}>
+        <ScrollView style={{ flex: 1, height: 100 }}>
+
+          {answer ? <Text style={styles.answerText}>Answer: {answer}</Text> : null}
+        </ScrollView>
         {isVisible && (
           <Button title="Clear" onPress={() => { setAnswer(""); setIsVisible(false); }} />
         )}
@@ -265,7 +268,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   answerText: {
-    marginTop: 50,
+    marginTop: 20,
     fontWeight: "bold",
     fontSize: 16,
     color: "#333",
