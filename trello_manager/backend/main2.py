@@ -65,28 +65,32 @@ def detect_action(text):
 def detect_object(text):
     """Detects if the user is referring to a board, list, or card."""
     object_patterns = {
-        "board": [["board"]],
-        "list": [["list"]],
-        "card": [["card"]],
+        "board": ["board"],  # Simplified to allow partial matching
+        "list": ["list"],
+        "card": ["card"],
     }
 
+    # Lowercase the input text for case-insensitive matching
     doc = nlp(text.lower())
+    text_tokens = [token.text for token in doc]  # Extract tokens from the input text
+
+    # Check for object patterns in the input text
     for obj, patterns in object_patterns.items():
         for pattern in patterns:
-            if all(token.text in [t.text for t in doc] for token in nlp(" ".join(pattern))):
+            if pattern in text_tokens:
                 return obj
     return "unknown"
-import re
 
 def extract_entities(text):
     """Extracts key details (action type, object type, name, lists) from user input using spaCy."""
-    doc = nlp(text)
+    doc = nlp(text)  # Assuming 'nlp' is a spaCy model already loaded
     extracted_info = {
         "action_type": None,
         "object_type": None,
         "name": None,
         "description": None,
         "lists": [],
+        "cards": [],
         "other_parameters": {}
     }
 
@@ -99,43 +103,32 @@ def extract_entities(text):
         elif ent.label_ == "PERSON":
             extracted_info["other_parameters"]["member"] = ent.text
 
-    #Rule-based intent detection
+    # Rule-based intent detection for action and object
     extracted_info["action_type"] = detect_action(text)
     extracted_info["object_type"] = detect_object(text)
-
-    #Extract lists from user input (if present)
-    list_match = re.search(r"lists?:\s*(.*)", text, re.IGNORECASE)  # Find lists section
+ 
+    # If no board name is extracted, attempt to infer it based on object_type
+    if not extracted_info["name"] and extracted_info["object_type"] == "board":
+        # Try to find pattern: "board [name]" or "board called [name]"
+        board_name_match = re.search(r"board\s+(?:called\s+)?(\w+)", text, re.IGNORECASE)
+        if board_name_match:
+            extracted_info["name"] = board_name_match.group(1)
+            
+    # Extract lists from user input (if present)
+    list_match = re.search(r"lists?(?:\s*:\s*|\s+with\s+)?(.*)", text, re.IGNORECASE)
     if list_match:
         list_text = list_match.group(1)
-        extracted_info["lists"] = [name.strip() for name in re.split(r",|\band\b", list_text)]  # Split by commas or "and"
+        # Clean up potential numeric prefixes like "2 lists:"
+        list_text = re.sub(r"^\d+\s+lists?(?:\s*:\s*)?", "", list_text)
+        extracted_info["lists"] = [name.strip() for name in re.split(r",|\band\b", list_text) if name.strip()]
+        
+    # Extract cards from user input (if present)
+    card_match = re.search(r"cards?:\s*(.*)", text, re.IGNORECASE)  # Find cards section
+    if card_match:
+        card_text = card_match.group(1)
+        extracted_info["cards"] = [name.strip() for name in re.split(r",|\band\b", card_text) if name.strip()]
 
     return extracted_info
-
-# def extract_entities(text):
-#     """Extracts key details (action type, object type, name) from user input using spaCy."""
-#     doc = nlp(text)
-#     extracted_info = {
-#         "action_type": None,
-#         "object_type": None,
-#         "name": None,
-#         "description": None,
-#         "other_parameters": {}
-#     }
-
-#     # Detect Named Entities (NER)
-#     for ent in doc.ents:
-#         if ent.label_ in ["ORG", "PRODUCT"]:  # Trello objects often classified under ORG/PRODUCT
-#             extracted_info["name"] = ent.text
-#         elif ent.label_ == "DATE":
-#             extracted_info["other_parameters"]["due_date"] = ent.text
-#         elif ent.label_ == "PERSON":
-#             extracted_info["other_parameters"]["member"] = ent.text
-
-#     # Rule-based intent detection
-#     extracted_info["action_type"] = detect_action(text)
-#     extracted_info["object_type"] = detect_object(text)
-
-#     return extracted_info
 
 @app.post("/prompt")
 async def ask(request: Request):
@@ -153,23 +146,6 @@ async def ask(request: Request):
     # If spaCy fails, use LLM for extraction
     if not extracted_info["action_type"] or extracted_info["object_type"] == "unknown":
         extraction_prompt = ChatPromptTemplate.from_messages([
-            # ("system", """You are an AI assistant specialized in extracting structured information from user requests related to Trello.
-            # Extract the following details:
-            # - Action type: create, list, update, delete, etc.
-            # - Object type: board, list, card, etc.
-            # - Name: The name provided for the object
-            # - Description: Any description provided
-            # - Other parameters: Due dates, labels, members, etc.
-            # - Lists: ["id":"name"], etc.
-            
-            # Based on the user request, analyze the intent and generate a structured plan.
-            # If a user wants to create a board, decide if lists and cards should be added.
-            # Decide the name and content of each board, list and card based on the name of the object,
-            # and the user intent.
-
-            # Respond ONLY with a JSON object containing these fields. If a field is missing, set its value to null.
-            # """),
-            # ("user", "{request}")
             ("system", """You are an AI assistant specialized in extracting structured information from user requests related to Trello.
             Extract the following details:
             - Action type: create, list, update, delete, etc.
@@ -180,8 +156,13 @@ async def ask(request: Request):
             - Lists: A list of names for lists to create. If the user specifies them, extract exactly what they said.
             - Example user input: 'Create a board for Work with lists: Urgent, Pending, Completed'
             - Extracted lists should be: ["Urgent", "Pending", "Completed"]
+            - Cards: A list of names for cards to create. If the user specifies them, extract exactly what they said.
+            - Example user input: 'Create a board for Work with lists: Urgent and 3 cards: Red, Yellow and Green'
+            - Extracted cards should be: ["Red", "Yellow", "Green"]
 
             Ensure lists are **ALWAYS extracted** if the user provides them.
+            Ensure cards are **ALWAYS extracted** if the user provides them.
+
             """)
 
         ])
@@ -209,27 +190,23 @@ async def ask(request: Request):
     #Determine action type and object type
     action_type = extracted_info.get("action_type")
     object_type = extracted_info.get("object_type")
-
-    #Create a Trello Board
+    # Create a Trello Board
     if action_type == "create" and object_type == "board":
         board_name = extracted_info.get("name") or "Default"
         description = extracted_info.get("description")        
-        
-        print("Extracted Info:", extracted_info)  # Debugging
         list_names = extracted_info.get("lists", [])
-        print("Extracted Lists:", list_names)  # Debugging
+        card_names = extracted_info.get("cards", [])
         
         url = "https://api.trello.com/1/boards/"
         board_params = {
             "name": board_name,
             "desc": description,
-            # "defaultLists": 0,
             "key": TRELLO_API_KEY,
             "token": TRELLO_TOKEN,
         }
         
         try:
-            #Create the Board
+            # Create the Board
             board_response = requests.post(url, params=board_params)
             if board_response.status_code != 200:
                 return {"error": f"Failed to create Trello board. {board_response.text}"}
@@ -237,8 +214,11 @@ async def ask(request: Request):
             board_data = board_response.json()
             board_id = board_data["id"]
 
-            #Create Lists in the Board (if specified)
+            # Initialize created_cards outside of the loop (before the loop starts)
+            created_cards = []  # Move this line here
             created_lists = []
+            
+            # Create Lists in the Board (if specified)
             for list_name in list_names:
                 list_url = "https://api.trello.com/1/lists"
                 list_params = {
@@ -248,26 +228,49 @@ async def ask(request: Request):
                     "token": TRELLO_TOKEN
                 }
                 list_response = requests.post(list_url, params=list_params)
-                if list_response.status_code == 200:
-                    created_list = list_response.json()
-                    print(f"Created list: {created_list}")  # Debugging
-                    created_lists.append(created_list)
-                else:
-                    print(f"Error creating list {list_name}: {list_response.text}")  # Debugging
+                if list_response.status_code != 200:
+                    return {"error": f"Failed to create list. {list_response.text}"}
 
-            #Return success message
+                created_list = list_response.json()
+                print(f"Created list: {created_list}")  # Debugging
+                created_lists.append(created_list)
+                
+                list_id = created_list["id"]
+
+                if card_names:  # Ensure there are cards to create
+                    for card_name in card_names:
+                        card_url = "https://api.trello.com/1/cards"
+                        card_params = {
+                            "name": card_name,
+                            "idList": list_id,
+                            "key": TRELLO_API_KEY,
+                            "token": TRELLO_TOKEN
+                        }
+                        card_response = requests.post(card_url, params=card_params)
+                        if card_response.status_code != 200:
+                            return {"error": f"Failed to create card. {card_response.text}"}
+                        created_card = card_response.json()
+                        print(f"Created card: {created_card}")  # Debugging
+                        created_cards.append(created_card)
+
+            # Return success message
             answer = f"I've created a new Trello board called '{board_name}'"
             if description:
                 answer += f" with description: '{description}'."
             if created_lists:
                 list_names_str = ', '.join([lst['name'] for lst in created_lists])
                 answer += f" It includes the lists: {list_names_str}."
-
+            if created_cards:
+                card_names_str = ', '.join([crd['name'] for crd in created_cards])
+                answer += f" It includes the cards: {card_names_str}."
+            
             store_conversation(action, answer)
-            return {"answer": answer, "board": board_data, "lists": created_lists}
+            return {"answer": answer, "board": board_data, "lists": created_lists, "cards": created_cards}
 
         except Exception as e:
             return {"error": f"Error creating Trello board and lists: {str(e)}"}
+    
+   
     #Delete a Trello Board
     elif action_type == "delete" and object_type == "board":
         board_name = extracted_info.get("name")
